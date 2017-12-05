@@ -2,6 +2,8 @@ package com.github.vipeout23.mandelbroetchen.main;
 
 import java.awt.image.BufferedImage;
 
+import org.omg.CORBA.IMP_LIMIT;
+
 import com.github.vipeout23.mandelbroetchen.main.Mandelfunctions.ComplexNumber;
 
 import javafx.application.Application;
@@ -9,6 +11,8 @@ import javafx.embed.swing.SwingFXUtils;
 import javafx.event.EventHandler;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
+import javafx.scene.control.Button;
+import javafx.scene.control.ButtonBar;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.input.MouseButton;
@@ -24,12 +28,22 @@ public class Gui extends Application{
 	private static final double ZOOM_RATIO = 0.1;
 	
 	//ViewBox (Edge 0 and Edge 2)
-	private static ComplexNumber viewBoxEdge0 = new ComplexNumber(-2.5, 1.0);
-	private static ComplexNumber viewBoxEdge2 = new ComplexNumber(1.0, -1.0);
+	private static ComplexNumber viewBoxEdge00 = new ComplexNumber(-2.5, 1.0);
+	private static ComplexNumber viewBoxEdge20 = new ComplexNumber(1.0, -1.0);
+	private static ComplexNumber viewBoxEdge0 = viewBoxEdge00;
+	private static ComplexNumber viewBoxEdge2 = viewBoxEdge20;
+	
+	//ViewBox center
+	private static ComplexNumber viewBoxCenter;
 	
 	private static double zoom = 1.0;
+	private static boolean absolute = false;
 	
-	public static Image generateImage(int width, int height, int iterations, ComplexNumber viewBoxEdge0, ComplexNumber viewBoxEdge2) {
+	private static Stage primaryStage;
+	private static ImageView imgView;
+	
+	public static Image generateImage(int width, int height, int iterations,
+			ComplexNumber viewBoxEdge0, ComplexNumber viewBoxEdge2, boolean absoluteMode) {
 		BufferedImage bimg = new BufferedImage(WIDTH, HEIGHT, BufferedImage.TYPE_INT_RGB);
 		
 		int[] histogram = new int[iterations+1];
@@ -47,26 +61,62 @@ public class Gui extends Application{
 			for(int x = 0; x < width; x++) {
 				double hue = 0.0;
 				for(int i = 0; i < iterationMap[y][x]; i++) {
-					hue += (double)histogram[i] / (WIDTH*HEIGHT);
-					//hue = (double)iterationMap[y][x] / iterations;
+					if(!absoluteMode) {
+						hue += (double)histogram[i] / (WIDTH*HEIGHT);						
+					}else {
+						hue = (double)iterationMap[y][x] / iterations;						
+					}
 				}
 				bimg.setRGB(x, y, Mandelfunctions.getColorFromDivergeValue((double)hue));
 			}
 		}
 		
-		
 		return SwingFXUtils.toFXImage(bimg, null);
 	}
 	
+	private static void updateTitle() {
+		primaryStage.setTitle(String.format("Location: %s  |  Zoom: %.15f  |  Iterations: %d  |  RenderMode: %s",
+				viewBoxCenter, zoom, ITERATIONS, (absolute) ? "Absolute" : "Histogram"));
+	}
 	
+	private static void jumpTo(ComplexNumber viewBoxEdge0, ComplexNumber viewBoxEdge2) {
+		imgView.setImage(generateImage(WIDTH, HEIGHT, ITERATIONS, viewBoxEdge0, viewBoxEdge2, absolute));
+		Gui.viewBoxEdge0 = viewBoxEdge0;
+		Gui.viewBoxEdge2 = viewBoxEdge2;
+		updateTitle();
+	}
+
 	@Override
 	public void start(Stage primaryStage) throws Exception {
+		Gui.primaryStage = primaryStage;
+		
 		BorderPane pane = new BorderPane();
 		ImageView imgView = new ImageView();
 		pane.setCenter(imgView);
 		
+		Gui.imgView = imgView;
 		
-		imgView.setImage(generateImage(WIDTH, HEIGHT, ITERATIONS, viewBoxEdge0, viewBoxEdge2));
+		//Build button bar
+		ButtonBar bar = new ButtonBar();
+		Button zoomReset = new Button("Reset Zoom");
+		Button exprot = new Button("Export");
+		Button load = new Button("Import");
+		Button switchRenderMode = new Button("Switch RenderMode");
+		
+		bar.getButtons().addAll(zoomReset, switchRenderMode, load, exprot);
+		pane.setTop(bar);
+		
+		zoomReset.setOnAction(e -> {
+			jumpTo(viewBoxEdge00, viewBoxEdge20);
+		});
+		switchRenderMode.setOnAction(e -> {
+			absolute = !absolute;
+			jumpTo(viewBoxEdge0, viewBoxEdge2);
+		});
+		
+		imgView.setImage(generateImage(WIDTH, HEIGHT, ITERATIONS, viewBoxEdge0, viewBoxEdge2, true));
+		updateTitle();
+		
 		imgView.setOnMouseClicked(new EventHandler<MouseEvent>() {
 			@Override
 			public void handle(MouseEvent event) {
@@ -97,14 +147,17 @@ public class Gui extends Application{
 				ComplexNumber vb2 = new ComplexNumber(center.realPart + zoomRatio*realDist*0.5,
 						center.imaginaryPart - zoomRatio*imagDist*0.5);
 				
-				zoom *= zoomRatio;
+				//Calculate zoom factor
+				zoom = realDist*zoomRatio / Math.abs(viewBoxEdge00.realPart - viewBoxEdge20.realPart);
 				
 				viewBoxEdge0 = vb0;
 				viewBoxEdge2 = vb2;
 				
-				imgView.setImage(generateImage(WIDTH, HEIGHT, ITERATIONS, viewBoxEdge0, viewBoxEdge2));
+				jumpTo(vb0, vb2);
 				
-				primaryStage.setTitle(String.format("Location: %s  |  Zoom: %.15f  |  Iterations: %d", center, zoom, ITERATIONS));
+				viewBoxCenter = center;
+				
+				updateTitle();
 			}
 		});
 		
